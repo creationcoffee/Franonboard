@@ -126,8 +126,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onImpersonate }) => {
   };
 
   const copyToClipboard = async (text: string, field: string) => {
+    // Determine the best base URL for the invite
+    // We prefer the Vercel URL if we are in the AI Studio preview
+    const isDevPreview = window.location.origin.includes('run.app');
+    const baseUrl = isDevPreview ? 'https://franonboard.vercel.app' : window.location.origin;
+
+    // Replace the URL in the text if it was generated with window.location.origin
+    const finalEmailText = text.replace(window.location.origin, baseUrl);
+
     try {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(finalEmailText);
       setCopiedField(field);
       setTimeout(() => setCopiedField(null), 2000);
       
@@ -202,14 +210,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onImpersonate }) => {
   };
 
   const handleDeleteUser = async (userId: string) => {
+    if (!userId) return;
     if (!window.confirm('Are you sure you want to PERMANENTLY delete this franchisee? All their progress and logs will be lost.')) return;
     
+    console.log("Attempting to delete user document:", userId);
     setIsDeleting(true);
     try {
       await deleteDoc(doc(db, 'users', userId));
-      // Also potentially delete progress and notes, but let's keep it simple for now or do it in rules-compliant way
+      console.log("Delete successful");
       if (selectedUserId === userId) setSelectedUserId(null);
     } catch (err) {
+      console.error("Delete failed:", err);
       handleFirestoreError(err, OperationType.DELETE, `users/${userId}`);
     } finally {
       setIsDeleting(false);
@@ -688,7 +699,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onImpersonate }) => {
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                 </svg>
-                Invite Franchisee <span className="text-[10px] text-gray-700 font-mono">v2.1 (Setup Links)</span>
+                Invite Franchisee <span className="text-[10px] text-gray-700 font-mono">v2.3 (Delete Fix)</span>
               </h3>
               <button onClick={() => setShowInviteModal(false)} className="text-gray-500 hover:text-white transition-colors">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -725,7 +736,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onImpersonate }) => {
                       `Hello ${userToInvite.name},\n\n` +
                       `We're excited to have you on board! To help manage your journey with Creation Coffee, we've set up a personalized onboarding dashboard for you.\n\n` +
                       `You can track your steps, complete action items, and find helpful resources all in one place.\n\n` +
-                      `Set up your secure access link here: ${window.location.origin}?setup=true&email=${encodeURIComponent(userToInvite.email)}\n\n` +
+                      `Set up your secure access link here: ${window.location.origin.includes('run.app') ? 'https://franonboard.vercel.app' : window.location.origin}?setup=true&email=${encodeURIComponent(userToInvite.email)}\n\n` +
                       `Best regards,\n` +
                       `Creation Coffee Management`,
                       'body'
@@ -739,7 +750,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onImpersonate }) => {
                   {`Hello ${userToInvite.name},\n\n`}
                   {`We're excited to have you on board! To help manage your journey with Creation Coffee, we've set up a personalized onboarding dashboard for you.\n\n`}
                   {`You can track your steps, complete action items, and find helpful resources all in one place.\n\n`}
-                  {`Set up your secure access link here: ${window.location.origin}?setup=true&email=${encodeURIComponent(userToInvite.email)}\n\n`}
+                  {`Set up your secure access link here: ${window.location.origin.includes('run.app') ? 'https://franonboard.vercel.app' : window.location.origin}?setup=true&email=${encodeURIComponent(userToInvite.email)}\n\n`}
                   {`Best regards,\n`}
                   {`Creation Coffee Management`}
                 </div>
