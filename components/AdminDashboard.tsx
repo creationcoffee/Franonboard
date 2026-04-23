@@ -6,9 +6,10 @@ import { STEPS } from '../constants';
 
 interface AdminDashboardProps {
   onImpersonate?: (userId: string) => void;
+  currentUser: User;
 }
 
-const AdminDashboard: React.FC<AdminDashboardProps> = ({ onImpersonate }) => {
+const AdminDashboard: React.FC<AdminDashboardProps> = ({ onImpersonate, currentUser }) => {
   const [users, setUsers] = useState<User[]>([]);
   const [userProgress, setUserProgress] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
@@ -258,6 +259,27 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onImpersonate }) => {
     }
   };
 
+  const handleAssignAdmin = async (userId: string, adminId: string, adminName: string) => {
+    try {
+      await updateDoc(doc(db, 'users', userId), {
+        assignedAdminId: adminId,
+        assignedAdminName: adminName
+      });
+      
+      // Log the assignment
+      const logPath = collection(db, 'activity_logs');
+      await setDoc(doc(logPath), {
+        userId: userId,
+        type: 'note',
+        content: `Transferred ownership to ${adminName}`,
+        timestamp: new Date().toISOString(),
+        adminId: currentUser.id || 'system'
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `users/${userId}`);
+    }
+  };
+
   const handleSaveNote = async () => {
     if (!selectedUserId) return;
     setSavingNote(true);
@@ -330,6 +352,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onImpersonate }) => {
   }
 
   const selectedUser = users.find(u => u.id === selectedUserId);
+  const availableAdmins = users.filter(u => u.role === 'admin');
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
@@ -446,7 +469,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onImpersonate }) => {
                 </div>
                 <div className="flex-1 min-w-0">
                   <h3 className="text-lg font-bold text-white truncate">{user.name}</h3>
-                  <p className="text-sm text-gray-500 truncate">{user.email}</p>
+                  <div className="flex flex-col">
+                    <p className="text-sm text-gray-500 truncate">{user.email}</p>
+                    {user.assignedAdminName && user.role !== 'admin' && (
+                      <span className="text-[10px] text-amber-500/80 font-bold uppercase tracking-tighter mt-0.5">
+                         Managed by {user.assignedAdminName}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -470,18 +500,29 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onImpersonate }) => {
                 </div>
               )}
 
-              <div className="space-y-2 mt-auto">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">Total Progress</span>
-                  <span className="text-amber-500 font-bold">{Math.round(calculateProgress(user.id!))}%</span>
+              {user.role === 'admin' ? (
+                <div className="mt-auto pt-2 border-t border-gray-800">
+                  <div className="flex items-center gap-2 text-indigo-400">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                    </svg>
+                    <span className="text-[10px] uppercase font-black tracking-widest">System Admin</span>
+                  </div>
                 </div>
-                <div className="w-full bg-gray-700 h-1.5 rounded-full overflow-hidden">
-                  <div 
-                    className="bg-amber-600 h-full transition-all duration-500" 
-                    style={{ width: `${calculateProgress(user.id!)}%` }}
-                  />
+              ) : (
+                <div className="space-y-2 mt-auto">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-400">Total Progress</span>
+                    <span className="text-amber-500 font-bold">{Math.round(calculateProgress(user.id!))}%</span>
+                  </div>
+                  <div className="w-full bg-gray-700 h-1.5 rounded-full overflow-hidden">
+                    <div 
+                      className="bg-amber-600 h-full transition-all duration-500" 
+                      style={{ width: `${calculateProgress(user.id!)}%` }}
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           ))}
         </div>
@@ -496,6 +537,40 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onImpersonate }) => {
                 {selectedUser.location && <span className="text-sm text-gray-500">({selectedUser.location})</span>}
               </div>
               <p className="text-gray-400 font-mono text-sm">{selectedUser.email}</p>
+              
+              {selectedUser.role !== 'admin' && (
+                <div className="flex items-center gap-4 mt-4 p-3 bg-gray-800/40 rounded-xl border border-gray-800 w-fit">
+                  <div className="flex flex-col">
+                    <span className="text-[10px] uppercase font-black text-gray-500 tracking-widest">Account Manager</span>
+                    <span className="text-sm font-bold text-white">
+                      {selectedUser.assignedAdminName || 'Unassigned'}
+                    </span>
+                  </div>
+                  
+                  <div className="flex items-center gap-2 border-l border-gray-800 pl-4 ml-2">
+                    <button 
+                      onClick={() => handleAssignAdmin(selectedUserId, currentUser.id!, currentUser.name)}
+                      className="px-3 py-1.5 bg-amber-600/10 text-amber-500 border border-amber-600/30 text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-amber-600 hover:text-white transition-all"
+                    >
+                      Claim
+                    </button>
+                    
+                    <select 
+                      onChange={(e) => {
+                        const admin = availableAdmins.find(a => a.id === e.target.value);
+                        if (admin) handleAssignAdmin(selectedUserId, admin.id!, admin.name);
+                      }}
+                      value={selectedUser.assignedAdminId || ''}
+                      className="bg-gray-900 border border-gray-700 text-gray-400 text-[10px] font-black uppercase tracking-widest rounded-lg px-2 py-1.5 focus:outline-none focus:border-amber-600"
+                    >
+                      <option value="" disabled>Transfer to...</option>
+                      {availableAdmins.map(admin => (
+                        <option key={admin.id} value={admin.id}>{admin.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <button 
@@ -636,7 +711,26 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onImpersonate }) => {
               </div>
             </div>
 
-            {/* Custom Tasks Section */}
+            {selectedUser.role === 'admin' ? (
+              <div className="lg:col-span-2 flex flex-col items-center justify-center bg-gray-800/20 rounded-3xl border border-dashed border-gray-800 p-12 text-center h-[600px]">
+                <div className="w-20 h-20 bg-indigo-900/20 rounded-full flex items-center justify-center mb-6">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                  </svg>
+                </div>
+                <h4 className="text-2xl font-bold text-white mb-2">Administrative Profile</h4>
+                <p className="text-gray-400 max-w-md mx-auto">
+                  This user has administrative privileges. Onboarding progress and checklists are disabled for administrators to focus on management tasks.
+                </p>
+                <div className="mt-8 flex flex-wrap justify-center gap-3">
+                  <div className="px-4 py-2 bg-gray-800 border border-gray-700 rounded-full text-xs font-bold text-gray-400">Manage Leads</div>
+                  <div className="px-4 py-2 bg-gray-800 border border-gray-700 rounded-full text-xs font-bold text-gray-400">Review Checklists</div>
+                  <div className="px-4 py-2 bg-gray-800 border border-gray-700 rounded-full text-xs font-bold text-gray-400">Log Activities</div>
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* Custom Tasks Section */}
             <div className="space-y-6">
               <h4 className="text-xl font-bold text-white border-b border-gray-800 pb-2">Franchisee To-Do List</h4>
               
@@ -719,9 +813,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onImpersonate }) => {
                 })}
               </div>
             </div>
-          </div>
+          </>)}
         </div>
-      )}
+      </div>
+    )}
 
       {/* Invite Modal */}
       {showInviteModal && userToInvite && (
@@ -732,7 +827,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onImpersonate }) => {
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                 </svg>
-                Invite Franchisee <span className="text-[10px] text-gray-700 font-mono">v2.5 (Admin Toggle)</span>
+                Invite Franchisee <span className="text-[10px] text-gray-700 font-mono">v2.7 (Admin Ownership)</span>
               </h3>
               <button onClick={() => setShowInviteModal(false)} className="text-gray-500 hover:text-white transition-colors">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">

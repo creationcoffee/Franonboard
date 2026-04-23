@@ -291,10 +291,13 @@ const App: React.FC = () => {
         
         <main className="container mx-auto px-4 py-8">
           {currentUser.role === 'admin' && isAdminView && !impersonatedUserId ? (
-            <AdminDashboard onImpersonate={(uid) => {
-              setImpersonatedUserId(uid);
-              setIsAdminView(false);
-            }} />
+            <AdminDashboard 
+              currentUser={currentUser}
+              onImpersonate={(uid) => {
+                setImpersonatedUserId(uid);
+                setIsAdminView(false);
+              }} 
+            />
           ) : (
             <>
               {impersonatedUserId && (

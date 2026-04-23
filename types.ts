@@ -26,6 +26,8 @@ export interface User {
   location?: string;
   createdAt?: string;
   invitedAt?: string;
+  assignedAdminId?: string;
+  assignedAdminName?: string;
 }
 
 export interface AdminNote {
