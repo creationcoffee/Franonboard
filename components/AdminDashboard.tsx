@@ -238,6 +238,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onImpersonate }) => {
     }
   };
 
+  const handleToggleAdmin = async (userId: string, currentRole: string) => {
+    const newRole = currentRole === 'admin' ? 'franchisee' : 'admin';
+    const message = currentRole === 'admin' 
+      ? 'Are you sure you want to remove admin access for this user?' 
+      : 'Are you sure you want to make this user an ADMIN? They will have full access to manage all franchisees.';
+    
+    if (!window.confirm(message)) return;
+
+    try {
+      await updateDoc(doc(db, 'users', userId), {
+        role: newRole
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `users/${userId}`);
+    }
+  };
+
   const handleSaveNote = async () => {
     if (!selectedUserId) return;
     setSavingNote(true);
@@ -498,6 +515,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onImpersonate }) => {
                 View
               </button>
               <button 
+                onClick={() => handleToggleAdmin(selectedUserId, selectedUser.role)}
+                className={`px-4 py-2 border font-bold rounded-lg transition-all flex items-center gap-2 text-sm ${
+                  selectedUser.role === 'admin' 
+                  ? 'bg-purple-900/20 text-purple-400 border-purple-900/30 hover:bg-purple-600 hover:text-white' 
+                  : 'bg-indigo-900/20 text-indigo-400 border-indigo-900/30 hover:bg-indigo-600 hover:text-white'
+                }`}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                </svg>
+                {selectedUser.role === 'admin' ? 'Remove Admin' : 'Make Admin'}
+              </button>
+              <button 
                 onClick={() => handleArchiveUser(selectedUserId, selectedUser.status)}
                 className="px-4 py-2 bg-gray-800 text-gray-400 border border-gray-700 font-bold rounded-lg hover:bg-gray-700 hover:text-white transition-all flex items-center gap-2 text-sm"
               >
@@ -699,7 +729,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onImpersonate }) => {
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                 </svg>
-                Invite Franchisee <span className="text-[10px] text-gray-700 font-mono">v2.3 (Delete Fix)</span>
+                Invite Franchisee <span className="text-[10px] text-gray-700 font-mono">v2.4 (Admin Promo)</span>
               </h3>
               <button onClick={() => setShowInviteModal(false)} className="text-gray-500 hover:text-white transition-colors">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
