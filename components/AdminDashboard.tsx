@@ -663,7 +663,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onImpersonate }) => {
                       `Hello ${userToInvite.name},\n\n` +
                       `We're excited to have you on board! To help manage your journey with Creation Coffee, we've set up a personalized onboarding dashboard for you.\n\n` +
                       `You can track your steps, complete action items, and find helpful resources all in one place.\n\n` +
-                      `Access your dashboard here: ${window.location.origin}\n\n` +
+                      `Set up your secure access link here: ${window.location.origin}?setup=true&email=${encodeURIComponent(userToInvite.email)}\n\n` +
                       `Best regards,\n` +
                       `Creation Coffee Management`,
                       'body'
@@ -677,7 +677,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onImpersonate }) => {
                   {`Hello ${userToInvite.name},\n\n`}
                   {`We're excited to have you on board! To help manage your journey with Creation Coffee, we've set up a personalized onboarding dashboard for you.\n\n`}
                   {`You can track your steps, complete action items, and find helpful resources all in one place.\n\n`}
-                  {`Access your dashboard here: ${window.location.origin}\n\n`}
+                  {`Set up your secure access link here: ${window.location.origin}?setup=true&email=${encodeURIComponent(userToInvite.email)}\n\n`}
                   {`Best regards,\n`}
                   {`Creation Coffee Management`}
                 </div>

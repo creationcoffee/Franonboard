@@ -18,6 +18,18 @@ const Login: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  React.useEffect(() => {
+    // Check for invite/setup link parameters
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('setup') === 'true') {
+      setIsSignUpView(true);
+      const emailParam = params.get('email');
+      if (emailParam) {
+        setEmail(decodeURIComponent(emailParam));
+      }
+    }
+  }, []);
+
   const handleGoogleSignIn = async () => {
     setLoading(true);
     setError(null);
