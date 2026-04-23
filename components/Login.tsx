@@ -1,7 +1,8 @@
 
 import React, { useState } from 'react';
-import { auth } from '../firebase';
+import { auth, db } from '../firebase';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import { doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
 
 const Logo: React.FC = () => (
     <div className="flex items-center justify-center h-16 w-16 bg-gray-900 border-2 border-amber-600 rounded-full mb-6">
