@@ -1,0 +1,98 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+             (request.auth.token.email == 'jacob@creationcoffee.co' || 
+              (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+               get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
+    }
+
+    function isValidUserProgress(data) {
+      return data.user_id is string &&
+             data.completed_steps is list &&
+             data.completed_steps.size() < 100 &&
+             data.completed_tasks is list &&
+             data.completed_tasks.size() < 500 &&
+             data.updated_at is string &&
+             data.updated_at.size() < 100;
+    }
+
+    function isValidUserProfile(data) {
+      return data.name is string && data.name.size() < 200 &&
+             data.email is string && data.email.size() < 200 &&
+             data.role in ['admin', 'franchisee'];
+    }
+
+    function isValidCustomTask(data) {
+      return data.id is string &&
+             data.userId is string &&
+             data.text is string && data.text.size() < 500 &&
+             data.createdAt is string &&
+             data.completed is bool;
+    }
+
+    function isValidAdminNote(data) {
+      return data.userId is string &&
+             data.content is string && data.content.size() < 5000 &&
+             data.updatedAt is string;
+    }
+
+    function isValidActivityLog(data) {
+      return data.userId is string &&
+             data.type in ['call', 'email', 'meeting', 'note'] &&
+             data.content is string && data.content.size() < 2000 &&
+             data.timestamp is string &&
+             data.adminId is string;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
+      // Self-creation removed to support invite-only model
+      allow create: if isAdmin() && isValidUserProfile(request.resource.data);
+      allow update: if (isOwner(userId) || isAdmin()) && isValidUserProfile(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /admin_notes/{userId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin() && isValidAdminNote(request.resource.data);
+    }
+
+    match /activity_logs/{logId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin() && isValidActivityLog(request.resource.data);
+    }
+
+    match /user_progress/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && isValidUserProgress(request.resource.data);
+      allow update: if (isOwner(userId) || isAdmin()) && isValidUserProgress(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /custom_tasks/{taskId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAdmin() && isValidCustomTask(request.resource.data);
+      allow update: if (isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid)) && isValidCustomTask(request.resource.data);
+      allow delete: if isAdmin();
+    }
+  }
+}

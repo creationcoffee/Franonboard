@@ -1,0 +1,92 @@
+{
+  "entities": {
+    "UserProgress": {
+      "title": "User Progress",
+      "description": "Tracks the completed steps and tasks for a franchisee.",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string", "description": "The UID of the user." },
+        "completed_steps": { "type": "array", "items": { "type": "number" }, "description": "List of completed step IDs." },
+        "completed_tasks": { "type": "array", "items": { "type": "string" }, "description": "List of completed task IDs." },
+        "updated_at": { "type": "string", "format": "date-time", "description": "Last update timestamp." }
+      },
+      "required": ["user_id", "completed_steps", "completed_tasks", "updated_at"]
+    },
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "Public profile information for a franchisee.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Full name." },
+        "email": { "type": "string", "description": "Email address." },
+        "role": { "type": "string", "enum": ["admin", "franchisee"], "description": "Account role." },
+        "status": { "type": "string", "enum": ["potential", "active", "onboarding"], "description": "Lead status." },
+        "phone": { "type": "string" },
+        "location": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "invitedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "email", "role"]
+    },
+    "AdminNote": {
+      "title": "Admin Note",
+      "description": "Private notes about a franchisee, accessible only to admins.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "content": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "content", "updatedAt"]
+    },
+    "ActivityLog": {
+      "title": "Activity Log",
+      "description": "Records of interactions with a franchisee (e.g., calls, emails).",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "type": { "type": "string", "enum": ["call", "email", "meeting", "note"] },
+        "content": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "adminId": { "type": "string" }
+      },
+      "required": ["userId", "type", "content", "timestamp", "adminId"]
+    },
+    "CustomTask": {
+      "title": "Custom Task",
+      "description": "A task assigned by an admin to a specific franchisee.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "text": { "type": "string" },
+        "description": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "completed": { "type": "boolean" }
+      },
+      "required": ["id", "userId", "text", "createdAt", "completed"]
+    }
+  },
+  "firestore": {
+    "/user_progress/{userId}": {
+      "schema": "UserProgress",
+      "description": "User progress documents indexed by user ID."
+    },
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profiles for identity and role management."
+    },
+    "/admin_notes/{userId}": {
+      "schema": "AdminNote",
+      "description": "Internal notes for franchisees, admin-only."
+    },
+    "/activity_logs/{logId}": {
+      "schema": "ActivityLog",
+      "description": "Historical log of admin interactions with franchisees."
+    },
+    "/custom_tasks/{taskId}": {
+      "schema": "CustomTask",
+      "description": "Assigned tasks for franchisees."
+    }
+  }
+}
