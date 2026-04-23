@@ -14,7 +14,7 @@ export interface ProcessStep {
 }
 
 export type UserRole = 'admin' | 'franchisee';
-export type UserStatus = 'potential' | 'active' | 'onboarding';
+export type UserStatus = 'potential' | 'active' | 'onboarding' | 'archived';
 
 export interface User {
   id?: string;

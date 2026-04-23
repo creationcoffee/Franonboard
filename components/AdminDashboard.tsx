@@ -21,6 +21,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onImpersonate }) => {
   const [newActivityContent, setNewActivityContent] = useState('');
   const [selectedActivityType, setSelectedActivityType] = useState<ActivityType>('note');
   
+  const [showArchived, setShowArchived] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  
   // New User Form State
   const [showAddForm, setShowAddForm] = useState(false);
   const [newUser, setNewUser] = useState<Partial<User>>({
@@ -198,6 +201,32 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onImpersonate }) => {
     }
   };
 
+  const handleDeleteUser = async (userId: string) => {
+    if (!window.confirm('Are you sure you want to PERMANENTLY delete this franchisee? All their progress and logs will be lost.')) return;
+    
+    setIsDeleting(true);
+    try {
+      await deleteDoc(doc(db, 'users', userId));
+      // Also potentially delete progress and notes, but let's keep it simple for now or do it in rules-compliant way
+      if (selectedUserId === userId) setSelectedUserId(null);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `users/${userId}`);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleArchiveUser = async (userId: string, currentStatus?: string) => {
+    const newStatus: UserStatus = currentStatus === 'archived' ? 'potential' : 'archived';
+    try {
+      await updateDoc(doc(db, 'users', userId), {
+        status: newStatus
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `users/${userId}`);
+    }
+  };
+
   const handleSaveNote = async () => {
     if (!selectedUserId) return;
     setSavingNote(true);
@@ -274,9 +303,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onImpersonate }) => {
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       <div className="bg-gray-900 rounded-2xl p-8 border border-gray-800 shadow-2xl">
-        <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between mb-8 gap-6">
           <div>
-            <h2 className="text-3xl font-bold text-white">Franchisee Management</h2>
+            <div className="flex items-center gap-4">
+              <h2 className="text-3xl font-bold text-white">Franchisee Management</h2>
+              <button 
+                onClick={() => setShowArchived(!showArchived)}
+                className={`text-[10px] uppercase tracking-widest font-black px-3 py-1 rounded-full border transition-all ${
+                  showArchived 
+                  ? 'bg-amber-600 border-amber-600 text-white' 
+                  : 'bg-transparent border-gray-700 text-gray-500 hover:border-gray-500'
+                }`}
+              >
+                {showArchived ? 'Showing Archived' : 'Show Archived'}
+              </button>
+            </div>
             <p className="text-gray-400 mt-1">Manage and track franchisee onboarding progress.</p>
           </div>
           <button 
@@ -356,7 +397,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onImpersonate }) => {
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {users.map(user => (
+          {users
+            .filter(u => showArchived ? u.status === 'archived' : u.status !== 'archived')
+            .map(user => (
             <div 
               key={user.id} 
               onClick={() => setSelectedUserId(user.id!)}
@@ -423,25 +466,44 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onImpersonate }) => {
               </div>
               <p className="text-gray-400 font-mono text-sm">{selectedUser.email}</p>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <button 
                 onClick={() => handleInvite(selectedUser)}
-                className="px-6 py-2 bg-blue-600/10 text-blue-500 border border-blue-600/30 font-bold rounded-lg hover:bg-blue-600 hover:text-white transition-all flex items-center gap-2"
+                className="px-4 py-2 bg-blue-600/10 text-blue-500 border border-blue-600/30 font-bold rounded-lg hover:bg-blue-600 hover:text-white transition-all flex items-center gap-2 text-sm"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                 </svg>
-                {selectedUser.invitedAt ? 'Re-Invite' : 'Invite to Dashboard'}
+                {selectedUser.invitedAt ? 'Re-Invite' : 'Invite'}
               </button>
               <button 
                 onClick={() => onImpersonate?.(selectedUserId)}
-                className="px-6 py-2 bg-amber-600/10 text-amber-500 border border-amber-600/30 font-bold rounded-lg hover:bg-amber-600 hover:text-white transition-all flex items-center gap-2"
+                className="px-4 py-2 bg-amber-600/10 text-amber-500 border border-amber-600/30 font-bold rounded-lg hover:bg-amber-600 hover:text-white transition-all flex items-center gap-2 text-sm"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                 </svg>
-                View Checklist
+                View
+              </button>
+              <button 
+                onClick={() => handleArchiveUser(selectedUserId, selectedUser.status)}
+                className="px-4 py-2 bg-gray-800 text-gray-400 border border-gray-700 font-bold rounded-lg hover:bg-gray-700 hover:text-white transition-all flex items-center gap-2 text-sm"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                </svg>
+                {selectedUser.status === 'archived' ? 'Restore' : 'Archive'}
+              </button>
+              <button 
+                onClick={() => handleDeleteUser(selectedUserId)}
+                disabled={isDeleting}
+                className="px-4 py-2 bg-red-900/20 text-red-500 border border-red-900/30 font-bold rounded-lg hover:bg-red-600 hover:text-white transition-all flex items-center gap-2 text-sm disabled:opacity-50"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                Delete
               </button>
             </div>
           </div>
