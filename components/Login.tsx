@@ -65,51 +65,51 @@ const Login: React.FC = () => {
     setError(null);
 
     try {
-      // 1. Check if email is whitelisted
       const whitelistedEmail = email.toLowerCase().trim();
       
-      // First try: Document ID is the email (New system)
-      let userDoc = await getDoc(doc(db, 'users', whitelistedEmail));
-      let docRef = doc(db, 'users', whitelistedEmail);
-
-      // Second try: Search for any user with this email (Old system support)
-      // Note: In rules, isAdmin() or being the person allowed to self-read is needed.
-      // However, here we are unauthenticated.
-      // Actually, for backwards compatibility, we might need a query, 
-      // but query rules might block it if we aren't careful.
-      // Let's assume for now they might just have to be re-added as a lead if the ID doesn't match,
-      // OR I can make the lookup more flexible.
-      
-      if (!userDoc.exists()) {
-        setError("Account not found on the whitelist. Please ensure you are using the exact email address you were invited with.");
-        setLoading(false);
-        return;
-      }
-
-      const existingData = userDoc.data();
-
-      // 2. Procced with signup in Firebase Auth
+      // 1. Create the user in Auth first!
+      // This makes them 'authenticated' so the rules let them read their whitelisted doc (ID = email).
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       
       if (userCredential.user) {
+        const newUid = userCredential.user.uid;
+        
+        // 2. Now authenticated, we can grab the whitelisted pre-auth shell document
+        const userDoc = await getDoc(doc(db, 'users', whitelistedEmail));
+        
+        if (!userDoc.exists()) {
+          // If they weren't whitelisted, roll back the account creation
+          await userCredential.user.delete();
+          setError("Account not found on the whitelist. Please contact management for authorization.");
+          setLoading(false);
+          return;
+        }
+
+        const existingData = userDoc.data();
+
         // 3. Migrate the pre-authorized doc to the new UID doc
         // This links their "Pre-Auth shell" created by admin to their real UID
-        const newUid = userCredential.user.uid;
         await setDoc(doc(db, 'users', newUid), {
           ...existingData,
           id: newUid,
-          name: name || existingData.name // Prefer provided name if any
+          name: name || existingData.name || 'Franchisee',
+          status: existingData.status || 'potential'
         });
         
-        // Delete the temporary email-based doc
+        // 4. Delete the temporary email-based doc
         await deleteDoc(doc(db, 'users', whitelistedEmail));
+        
+        // Success! The app state will update via onAuthStateChanged in App.tsx
       }
 
     } catch (err: any) {
+      console.error("Signup error:", err);
       if (err.code === 'auth/email-already-in-use') {
         setError("An account already exists with this email. Please sign in instead.");
+      } else if (err.message?.includes('insufficient permissions')) {
+        setError("Your account setup is pending authorization. Please contact an administrator.");
       } else {
-        setError(err.message);
+        setError(err.message || "An error occurred during account setup.");
       }
       setLoading(false);
     }

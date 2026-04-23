@@ -34,7 +34,8 @@ service cloud.firestore {
     function isValidUserProfile(data) {
       return data.name is string && data.name.size() < 200 &&
              data.email is string && data.email.size() < 200 &&
-             data.role in ['admin', 'franchisee'];
+             data.role in ['admin', 'franchisee'] &&
+             (!('status' in data) || data.status in ['potential', 'onboarding', 'active', 'archived']);
     }
 
     function isValidCustomTask(data) {
@@ -64,11 +65,29 @@ service cloud.firestore {
     // ===============================================================
 
     match /users/{userId} {
-      allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
-      // Self-creation removed to support invite-only model
-      allow create: if isAdmin() && isValidUserProfile(request.resource.data);
+      // Allow users to read their own profile, admins to read all, 
+      // or authenticated users to read the invite shell matching their email
+      allow read: if isAuthenticated() && (
+        isOwner(userId) || 
+        isAdmin() || 
+        request.auth.token.email.lower() == userId.lower()
+      );
+      
+      // Allow creation by admin OR self-registration IF a matching invite shell exists
+      allow create: if isAdmin() || (
+        isAuthenticated() && 
+        isOwner(userId) && 
+        exists(/databases/$(database)/documents/users/$(request.auth.token.email.lower())) &&
+        isValidUserProfile(request.resource.data)
+      );
+      
       allow update: if (isOwner(userId) || isAdmin()) && isValidUserProfile(request.resource.data);
-      allow delete: if isAdmin();
+      
+      // Admin can delete, or user can delete their own email-based shell after adoption
+      allow delete: if isAdmin() || (
+        isAuthenticated() && 
+        request.auth.token.email.lower() == userId.lower()
+      );
     }
 
     match /admin_notes/{userId} {
