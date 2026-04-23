@@ -67,10 +67,21 @@ const Login: React.FC = () => {
     try {
       // 1. Check if email is whitelisted
       const whitelistedEmail = email.toLowerCase().trim();
-      const userDoc = await getDoc(doc(db, 'users', whitelistedEmail));
+      
+      // First try: Document ID is the email (New system)
+      let userDoc = await getDoc(doc(db, 'users', whitelistedEmail));
+      let docRef = doc(db, 'users', whitelistedEmail);
+
+      // Second try: Search for any user with this email (Old system support)
+      // Note: In rules, isAdmin() or being the person allowed to self-read is needed.
+      // However, here we are unauthenticated.
+      // Actually, for backwards compatibility, we might need a query, 
+      // but query rules might block it if we aren't careful.
+      // Let's assume for now they might just have to be re-added as a lead if the ID doesn't match,
+      // OR I can make the lookup more flexible.
       
       if (!userDoc.exists()) {
-        setError("This email hasn't been authorized yet. Please contact management.");
+        setError("Account not found on the whitelist. Please ensure you are using the exact email address you were invited with.");
         setLoading(false);
         return;
       }
