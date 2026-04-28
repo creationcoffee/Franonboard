@@ -280,6 +280,45 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onImpersonate, currentU
     }
   };
 
+  const handleToggleStandardTask = async (taskId: string) => {
+    if (!selectedUserId) return;
+    const progress = userProgress[selectedUserId] || { completed_tasks: [], completed_steps: [] };
+    const currentCompletedTasks = progress.completed_tasks || [];
+    const currentCompletedSteps = progress.completed_steps || [];
+    
+    let newCompletedTasks: string[];
+    if (currentCompletedTasks.includes(taskId)) {
+      newCompletedTasks = currentCompletedTasks.filter(id => id !== taskId);
+    } else {
+      newCompletedTasks = [...currentCompletedTasks, taskId];
+    }
+    
+    // Check if steps need updating (linked logic)
+    const newCompletedSteps = [...currentCompletedSteps];
+    STEPS.forEach(step => {
+      const allTasksDone = step.tasks.every(t => newCompletedTasks.includes(t.id));
+      const stepIdx = newCompletedSteps.indexOf(step.id);
+      
+      if (allTasksDone && stepIdx === -1) {
+        newCompletedSteps.push(step.id);
+      } else if (!allTasksDone && stepIdx !== -1) {
+        const index = newCompletedSteps.indexOf(step.id);
+        if (index > -1) newCompletedSteps.splice(index, 1);
+      }
+    });
+
+    try {
+      await setDoc(doc(db, 'user_progress', selectedUserId), {
+        user_id: selectedUserId,
+        completed_tasks: newCompletedTasks,
+        completed_steps: newCompletedSteps,
+        updated_at: new Date().toISOString()
+      }, { merge: true });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `user_progress/${selectedUserId}`);
+    }
+  };
+
   const handleSaveNote = async () => {
     if (!selectedUserId) return;
     setSavingNote(true);
@@ -353,6 +392,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onImpersonate, currentU
 
   const selectedUser = users.find(u => u.id === selectedUserId);
   const availableAdmins = users.filter(u => u.role === 'admin');
+  
+  const currentStep = selectedUserId && userProgress[selectedUserId] 
+    ? (STEPS.find(step => {
+        // Step is incomplete if any task in it is not in the completed_tasks list
+        return step.tasks.some(task => !userProgress[selectedUserId].completed_tasks?.includes(task.id));
+      }) || STEPS[STEPS.length - 1])
+    : STEPS[0];
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
@@ -730,7 +776,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onImpersonate, currentU
               </div>
             ) : (
               <>
-                {/* Custom Tasks Section */}
+                {/* Combined To-Do List Section */}
             <div className="space-y-6">
               <h4 className="text-xl font-bold text-white border-b border-gray-800 pb-2">Franchisee To-Do List</h4>
               
@@ -740,10 +786,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onImpersonate, currentU
                   value={newTaskText}
                   onChange={(e) => setNewTaskText(e.target.value)}
                   placeholder="Add specific requirement..."
-                  className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm"
+                  className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm"
                 />
                 <button 
-                  onClick={() => handleAddCustomTask(selectedUserId)}
+                  onClick={() => handleAddCustomTask(selectedUserId!)}
                   className="px-4 py-2 bg-gray-700 text-white font-bold rounded-lg hover:bg-gray-600 transition-all text-sm"
                 >
                   Add
@@ -751,32 +797,66 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onImpersonate, currentU
               </div>
 
               <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-                {customTasks[selectedUserId]?.length ? (
-                  customTasks[selectedUserId].map(task => (
-                    <div key={task.id} className="flex items-center justify-between p-4 bg-gray-800/50 rounded-xl border border-gray-700 group">
-                      <div className="flex items-center gap-4">
-                        <input 
-                          type="checkbox" 
-                          checked={task.completed} 
-                          onChange={() => handleToggleCustomTask(task)}
-                          className="w-5 h-5 rounded border-gray-600 text-amber-600 focus:ring-amber-500 bg-gray-700 cursor-pointer"
-                        />
-                        <span className={`text-sm text-white ${task.completed ? 'line-through text-gray-500' : ''}`}>
-                          {task.text}
-                        </span>
+                {/* Active Standard Phase Tasks */}
+                <div className="mb-6">
+                  <label className="text-[10px] uppercase font-black text-amber-500/60 mb-3 block tracking-widest px-1 flex items-center justify-between">
+                    <span>Active Phase: {currentStep.title}</span>
+                    <span className="text-[9px] bg-amber-600/10 text-amber-500 px-2 py-0.5 rounded border border-amber-600/20">Roadmap Sync</span>
+                  </label>
+                  {currentStep.tasks.map(task => {
+                    const isCompleted = userProgress[selectedUserId!]?.completed_tasks?.includes(task.id);
+                    return (
+                      <div key={task.id} className={`flex items-center justify-between p-4 rounded-xl border transition-all mb-2 ${
+                        isCompleted ? 'bg-green-900/10 border-green-900/30' : 'bg-amber-900/5 border-amber-900/10'
+                      }`}>
+                        <div className="flex items-center gap-4">
+                          <input 
+                            type="checkbox" 
+                            checked={isCompleted} 
+                            onChange={() => handleToggleStandardTask(task.id)}
+                            className="w-5 h-5 rounded border-gray-600 text-amber-600 focus:ring-amber-500 bg-gray-700 cursor-pointer"
+                          />
+                          <span className={`text-sm text-white ${isCompleted ? 'line-through text-gray-500' : ''}`}>
+                            {task.text}
+                          </span>
+                        </div>
                       </div>
-                      <button 
-                        onClick={() => handleDeleteCustomTask(task.id)}
-                        className="text-gray-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                      </button>
-                    </div>
-                  ))
+                    );
+                  })}
+                </div>
+
+                {/* Custom Tasks */}
+                {customTasks[selectedUserId!]?.length > 0 ? (
+                  <div className="mt-6 pt-6 border-t border-gray-800">
+                    <label className="text-[10px] uppercase font-black text-blue-500/60 mb-3 block tracking-widest px-1">Custom Requirements</label>
+                    {customTasks[selectedUserId!].map(task => (
+                      <div key={task.id} className={`flex items-center justify-between p-4 rounded-xl border transition-all mb-2 ${
+                        task.completed ? 'bg-green-900/10 border-green-900/30' : 'bg-gray-800/50 border-gray-700'
+                      } group`}>
+                        <div className="flex items-center gap-4">
+                          <input 
+                            type="checkbox" 
+                            checked={task.completed} 
+                            onChange={() => handleToggleCustomTask(task)}
+                            className="w-5 h-5 rounded border-gray-600 text-blue-600 focus:ring-blue-500 bg-gray-700 cursor-pointer"
+                          />
+                          <span className={`text-sm text-white ${task.completed ? 'line-through text-gray-500' : ''}`}>
+                            {task.text}
+                          </span>
+                        </div>
+                        <button 
+                          onClick={() => handleDeleteCustomTask(task.id)}
+                          className="text-gray-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 ) : (
-                  <div className="text-center py-8 text-gray-500 italic bg-gray-800/20 rounded-xl border border-dashed border-gray-700 text-sm">
+                  <div className="text-center py-4 text-[10px] uppercase font-black text-gray-700 tracking-widest">
                     No custom tasks assigned.
                   </div>
                 )}
@@ -827,7 +907,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onImpersonate, currentU
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                 </svg>
-                Invite Franchisee <span className="text-[10px] text-gray-700 font-mono">v2.7 (Admin Ownership)</span>
+                Invite Franchisee <span className="text-[10px] text-gray-700 font-mono">v2.8 (Linked Tasks)</span>
               </h3>
               <button onClick={() => setShowInviteModal(false)} className="text-gray-500 hover:text-white transition-colors">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
