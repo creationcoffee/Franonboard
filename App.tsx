@@ -77,6 +77,7 @@ const App: React.FC = () => {
   const [isUnauthorized, setIsUnauthorized] = useState(false);
   const [impersonatedUserId, setImpersonatedUserId] = useState<string | null>(null);
   const [isAdminView, setIsAdminView] = useState(false);
+  const [targetUserProfile, setTargetUserProfile] = useState<User | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -146,6 +147,31 @@ const App: React.FC = () => {
 
     return () => unsubscribe();
   }, []);
+
+  // Listen to profile details for either self or impersonated user
+  useEffect(() => {
+    const targetUserId = impersonatedUserId || (currentUser?.id);
+    if (!targetUserId) {
+      setTargetUserProfile(null);
+      return;
+    }
+
+    if (targetUserId === currentUser?.id) {
+      setTargetUserProfile(currentUser);
+      return;
+    }
+
+    const docRef = doc(db, 'users', targetUserId);
+    const unsubscribeProfile = onSnapshot(docRef, (snap) => {
+      if (snap.exists()) {
+        setTargetUserProfile({ id: snap.id, ...snap.data() } as User);
+      } else {
+        setTargetUserProfile(null);
+      }
+    });
+
+    return () => unsubscribeProfile();
+  }, [impersonatedUserId, currentUser]);
 
   // Listen to progress for either self or impersonated user
   useEffect(() => {
@@ -339,6 +365,7 @@ const App: React.FC = () => {
 
               <FranchiseProcessGuide 
                 userId={impersonatedUserId || currentUser.id!}
+                userProfile={targetUserProfile || currentUser}
                 completedSteps={completedSteps} 
                 onStepComplete={handleStepComplete} 
                 completedTasks={completedTasks}

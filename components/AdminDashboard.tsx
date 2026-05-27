@@ -36,10 +36,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onImpersonate, currentU
     role: 'franchisee'
   });
 
+  // Add Admin Form State
+  const [showAddAdminForm, setShowAddAdminForm] = useState(false);
+  const [newAdmin, setNewAdmin] = useState<Partial<User>>({
+    name: '',
+    email: '',
+    phone: '',
+    location: '',
+    status: 'active',
+    role: 'admin'
+  });
+
   // Invite Modal State
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [userToInvite, setUserToInvite] = useState<User | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  // Profile Edit State
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [editProfileName, setEditProfileName] = useState('');
+  const [editProfileEmail, setEditProfileEmail] = useState('');
+  const [editProfilePhone, setEditProfilePhone] = useState('');
+  const [editProfileLocation, setEditProfileLocation] = useState('');
 
   // Admin Notes State
   const [currentNote, setCurrentNote] = useState('');
@@ -104,6 +122,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onImpersonate, currentU
   }, [selectedUserId]);
 
   useEffect(() => {
+    setIsEditingProfile(false);
     if (selectedUserId) {
       const fetchNote = async () => {
         try {
@@ -210,6 +229,33 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onImpersonate, currentU
     }
   };
 
+  const handleCreateAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAdmin.email || !newAdmin.name) return;
+
+    const userId = newAdmin.email.toLowerCase().trim();
+    const userData = {
+      ...newAdmin,
+      email: newAdmin.email.toLowerCase().trim(),
+      createdAt: new Date().toISOString()
+    };
+
+    try {
+      await setDoc(doc(db, 'users', userId), userData);
+      setShowAddAdminForm(false);
+      setNewAdmin({
+        name: '',
+        email: '',
+        phone: '',
+        location: '',
+        status: 'active',
+        role: 'admin'
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `users/${userId}`);
+    }
+  };
+
   const handleDeleteUser = async (userId: string) => {
     if (!userId) return;
     if (!window.confirm('Are you sure you want to PERMANENTLY delete this franchisee? All their progress and logs will be lost.')) return;
@@ -277,6 +323,91 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onImpersonate, currentU
       });
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `users/${userId}`);
+    }
+  };
+
+  const startEditingProfile = () => {
+    const selectedUser = users.find(u => u.id === selectedUserId);
+    if (!selectedUser) return;
+    setEditProfileName(selectedUser.name || '');
+    setEditProfileEmail(selectedUser.email || '');
+    setEditProfilePhone(selectedUser.phone || '');
+    setEditProfileLocation(selectedUser.location || '');
+    setIsEditingProfile(true);
+  };
+
+  const handleSaveProfile = async () => {
+    if (!selectedUserId) return;
+    const selectedUser = users.find(u => u.id === selectedUserId);
+    if (!selectedUser) return;
+
+    if (!editProfileName.trim() || !editProfileEmail.trim()) {
+      alert("Name and Email are required.");
+      return;
+    }
+
+    const newEmail = editProfileEmail.toLowerCase().trim();
+    const oldEmail = selectedUser.email.toLowerCase().trim();
+    const isShellDoc = selectedUserId.toLowerCase().trim() === oldEmail;
+
+    try {
+      const updatedFields: Partial<User> = {
+        name: editProfileName.trim(),
+        email: newEmail,
+        phone: editProfilePhone.trim(),
+        location: editProfileLocation.trim(),
+      };
+
+      if (isShellDoc) {
+        if (newEmail !== oldEmail) {
+          const checkDoc = await getDoc(doc(db, 'users', newEmail));
+          if (checkDoc.exists()) {
+            alert("A user with that email already exists.");
+            return;
+          }
+
+          const oldDocRef = doc(db, 'users', selectedUserId);
+          const newDocRef = doc(db, 'users', newEmail);
+
+          const oldDocSnap = await getDoc(oldDocRef);
+          const currentData = oldDocSnap.exists() ? oldDocSnap.data() : {};
+
+          await setDoc(newDocRef, {
+            ...currentData,
+            ...updatedFields,
+            id: newEmail
+          });
+
+          await deleteDoc(oldDocRef);
+
+          // Update custom tasks pointing to old email shell
+          const oldTasks = customTasks[selectedUserId] || [];
+          for (const task of oldTasks) {
+            await updateDoc(doc(db, 'custom_tasks', task.id), {
+              userId: newEmail
+            });
+          }
+
+          setSelectedUserId(newEmail);
+        } else {
+          await updateDoc(doc(db, 'users', selectedUserId), updatedFields);
+        }
+      } else {
+        await updateDoc(doc(db, 'users', selectedUserId), updatedFields);
+      }
+
+      setIsEditingProfile(false);
+      
+      const logId = `log_${Date.now()}`;
+      await setDoc(doc(db, 'activity_logs', logId), {
+        userId: selectedUserId,
+        type: 'note',
+        content: `Updated franchisee contact info (Name: ${editProfileName}, Email: ${newEmail}, Phone: ${editProfilePhone || 'None'}, Location: ${editProfileLocation || 'None'})`,
+        timestamp: new Date().toISOString(),
+        adminId: currentUser.id || 'system'
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `users/${selectedUserId}`);
     }
   };
 
@@ -420,15 +551,32 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onImpersonate, currentU
             </div>
             <p className="text-gray-400 mt-1">Manage and track franchisee onboarding progress.</p>
           </div>
-          <button 
-            onClick={() => setShowAddForm(!showAddForm)}
-            className="px-6 py-3 bg-amber-600 text-white font-bold rounded-xl hover:bg-amber-500 transition-all shadow-lg shadow-amber-900/20 flex items-center gap-2"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            Add Potential Franchisee
-          </button>
+          <div className="flex flex-wrap gap-3">
+            <button 
+              onClick={() => {
+                setShowAddAdminForm(false);
+                setShowAddForm(!showAddForm);
+              }}
+              className="px-6 py-3 bg-amber-600 text-white font-bold rounded-xl hover:bg-amber-500 transition-all shadow-lg shadow-amber-900/20 flex items-center gap-2"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Add Potential Franchisee
+            </button>
+            <button 
+              onClick={() => {
+                setShowAddForm(false);
+                setShowAddAdminForm(!showAddAdminForm);
+              }}
+              className="px-6 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-500 transition-all shadow-lg shadow-indigo-900/20 flex items-center gap-2"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+              </svg>
+              Add Admin
+            </button>
+          </div>
         </div>
 
         {showAddForm && (
@@ -490,6 +638,71 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onImpersonate, currentU
                   className="px-8 py-2 bg-amber-600 text-white font-bold rounded-lg hover:bg-amber-500 transition-all shadow-md shadow-amber-900/20"
                 >
                   Create Profile
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {showAddAdminForm && (
+          <div className="mb-10 p-6 bg-gray-800/50 border border-gray-700 rounded-2xl animate-in slide-in-from-top-4 duration-300">
+            <h3 className="text-xl font-bold text-white mb-6">New Administrator Pre-Authorization</h3>
+            <form onSubmit={handleCreateAdmin} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-gray-400">Full Name</label>
+                <input 
+                  type="text" 
+                  value={newAdmin.name}
+                  onChange={(e) => setNewAdmin({...newAdmin, name: e.target.value})}
+                  required
+                  placeholder="Admin Name"
+                  className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-gray-400">Email Address</label>
+                <input 
+                  type="email" 
+                  value={newAdmin.email}
+                  onChange={(e) => setNewAdmin({...newAdmin, email: e.target.value})}
+                  required
+                  placeholder="admin@creationcoffee.co"
+                  className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-gray-400">Phone</label>
+                <input 
+                  type="tel" 
+                  value={newAdmin.phone}
+                  onChange={(e) => setNewAdmin({...newAdmin, phone: e.target.value})}
+                  placeholder="+1 (555) 000-0000"
+                  className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-gray-400">Location</label>
+                <input 
+                  type="text" 
+                  value={newAdmin.location}
+                  onChange={(e) => setNewAdmin({...newAdmin, location: e.target.value})}
+                  placeholder="HQ / Regional Office"
+                  className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div className="md:col-span-2 flex justify-end gap-3 pt-4">
+                <button 
+                  type="button" 
+                  onClick={() => setShowAddAdminForm(false)}
+                  className="px-6 py-2 text-gray-400 hover:text-white transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit"
+                  className="px-8 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-500 transition-all shadow-md shadow-indigo-900/20"
+                >
+                  Create Admin Profile
                 </button>
               </div>
             </form>
@@ -576,49 +789,165 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onImpersonate, currentU
 
       {selectedUserId && selectedUser && (
         <div className="bg-gray-900 rounded-2xl p-8 border border-gray-800 shadow-2xl animate-in slide-in-from-bottom-4 duration-300">
-          <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
-            <div>
-              <div className="flex items-center gap-3">
-                <h3 className="text-2xl font-bold text-white">{selectedUser.name}</h3>
-                {selectedUser.location && <span className="text-sm text-gray-500">({selectedUser.location})</span>}
-              </div>
-              <p className="text-gray-400 font-mono text-sm">{selectedUser.email}</p>
-              
-              {selectedUser.role !== 'admin' && (
-                <div className="flex items-center gap-4 mt-4 p-3 bg-gray-800/40 rounded-xl border border-gray-800 w-fit">
-                  <div className="flex flex-col">
-                    <span className="text-[10px] uppercase font-black text-gray-500 tracking-widest">Account Manager</span>
-                    <span className="text-sm font-bold text-white">
-                      {selectedUser.assignedAdminName || 'Unassigned'}
-                    </span>
+          <div className="flex flex-col md:flex-row md:items-start justify-between mb-8 gap-6">
+            <div className="flex-1 w-full">
+              {isEditingProfile ? (
+                <div className="space-y-4 max-w-xl bg-gray-800/20 p-5 rounded-2xl border border-gray-800">
+                  <p className="text-[10px] uppercase font-black text-amber-500 tracking-widest mb-2">Edit Franchisee Contact Details</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] uppercase font-black text-gray-400 tracking-widest">Full Name</label>
+                      <input 
+                        type="text" 
+                        value={editProfileName}
+                        onChange={(e) => setEditProfileName(e.target.value)}
+                        className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-amber-500 text-sm"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] uppercase font-black text-gray-400 tracking-widest">Email Address</label>
+                      <input 
+                        type="email" 
+                        value={editProfileEmail}
+                        onChange={(e) => setEditProfileEmail(e.target.value)}
+                        className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-amber-500 text-sm"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] uppercase font-black text-gray-400 tracking-widest">Phone Number</label>
+                      <input 
+                        type="tel" 
+                        value={editProfilePhone}
+                        onChange={(e) => setEditProfilePhone(e.target.value)}
+                        placeholder="Not Entered"
+                        className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-amber-500 text-sm"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] uppercase font-black text-gray-400 tracking-widest">Location</label>
+                      <input 
+                        type="text" 
+                        value={editProfileLocation}
+                        onChange={(e) => setEditProfileLocation(e.target.value)}
+                        placeholder="Not Entered"
+                        className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-amber-500 text-sm"
+                      />
+                    </div>
                   </div>
-                  
-                  <div className="flex items-center gap-2 border-l border-gray-800 pl-4 ml-2">
+                  <div className="flex gap-2 pt-2 border-t border-gray-800/50">
                     <button 
-                      onClick={() => handleAssignAdmin(selectedUserId, currentUser.id!, currentUser.name)}
-                      className="px-3 py-1.5 bg-amber-600/10 text-amber-500 border border-amber-600/30 text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-amber-600 hover:text-white transition-all"
+                      onClick={handleSaveProfile}
+                      className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg text-xs transition-all shadow-md shadow-amber-900/25"
                     >
-                      Claim
+                      Save Changes
                     </button>
-                    
-                    <select 
-                      onChange={(e) => {
-                        const admin = availableAdmins.find(a => a.id === e.target.value);
-                        if (admin) handleAssignAdmin(selectedUserId, admin.id!, admin.name);
-                      }}
-                      value={selectedUser.assignedAdminId || ''}
-                      className="bg-gray-900 border border-gray-700 text-gray-400 text-[10px] font-black uppercase tracking-widest rounded-lg px-2 py-1.5 focus:outline-none focus:border-amber-600"
+                    <button 
+                      onClick={() => setIsEditingProfile(false)}
+                      className="px-4 py-2 bg-gray-800 hover:bg-gray-750 text-gray-400 rounded-lg text-xs transition-all border border-gray-700"
                     >
-                      <option value="" disabled>Transfer to...</option>
-                      {availableAdmins.map(admin => (
-                        <option key={admin.id} value={admin.id}>{admin.name}</option>
-                      ))}
-                    </select>
+                      Cancel
+                    </button>
                   </div>
                 </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-3">
+                    <h3 className="text-2xl font-bold text-white">{selectedUser.name}</h3>
+                  </div>
+                  
+                  {/* Prominent Contact Details Cards */}
+                  <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-3xl">
+                    {/* PHONE CARD (Highly Prominent) */}
+                    <div className="bg-amber-600/10 border border-amber-600/30 rounded-xl p-3 flex items-center gap-3 shadow-sm">
+                      <div className="p-2 bg-amber-600/20 text-amber-400 rounded-lg">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.94.725l.548 2.2a1 1 0 01-.321.988l-1.305.98a10.582 10.582 0 004.872 4.872l.98-1.305a1 1 0 01.988-.321l2.2.548a1 1 0 01.725.94V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                        </svg>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[9px] uppercase font-black text-amber-400 tracking-wider leading-none mb-1">Phone Number</p>
+                        {selectedUser.phone ? (
+                          <p className="text-sm font-black text-white font-mono break-all">{selectedUser.phone}</p>
+                        ) : (
+                          <p className="text-xs text-gray-500 italic">Not Added</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* EMAIL CARD */}
+                    <div className="bg-gray-800/40 border border-gray-800 rounded-xl p-3 flex items-center gap-3">
+                      <div className="p-2 bg-blue-600/10 text-blue-400 rounded-lg">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[9px] uppercase font-black text-blue-400/60 tracking-wider leading-none mb-1">Email Address</p>
+                        <p className="text-xs font-bold text-gray-300 font-mono truncate select-all">{selectedUser.email}</p>
+                      </div>
+                    </div>
+
+                    {/* LOCATION CARD */}
+                    <div className="bg-gray-800/40 border border-gray-800 rounded-xl p-3 flex items-center gap-3">
+                      <div className="p-2 bg-emerald-600/10 text-emerald-400 rounded-lg">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[9px] uppercase font-black text-emerald-400/60 tracking-wider leading-none mb-1">Location</p>
+                        <p className="text-xs font-bold text-gray-300 truncate">{selectedUser.location || 'Not Added'}</p>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {selectedUser.role !== 'admin' && (
+                    <div className="flex items-center gap-4 mt-4 p-3 bg-gray-800/40 rounded-xl border border-gray-800 w-fit">
+                      <div className="flex flex-col">
+                        <span className="text-[10px] uppercase font-black text-gray-500 tracking-widest">Account Manager</span>
+                        <span className="text-sm font-bold text-white">
+                          {selectedUser.assignedAdminName || 'Unassigned'}
+                        </span>
+                      </div>
+                      
+                      <div className="flex items-center gap-2 border-l border-gray-800 pl-4 ml-2">
+                        <button 
+                          onClick={() => handleAssignAdmin(selectedUserId, currentUser.id!, currentUser.name)}
+                          className="px-3 py-1.5 bg-amber-600/10 text-amber-500 border border-amber-600/30 text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-amber-600 hover:text-white transition-all"
+                        >
+                          Claim
+                        </button>
+                        
+                        <select 
+                          onChange={(e) => {
+                            const admin = availableAdmins.find(a => a.id === e.target.value);
+                            if (admin) handleAssignAdmin(selectedUserId, admin.id!, admin.name);
+                          }}
+                          value={selectedUser.assignedAdminId || ''}
+                          className="bg-gray-900 border border-gray-700 text-gray-400 text-[10px] font-black uppercase tracking-widest rounded-lg px-2 py-1.5 focus:outline-none focus:border-amber-600"
+                        >
+                          <option value="" disabled>Transfer to...</option>
+                          {availableAdmins.map(admin => (
+                            <option key={admin.id} value={admin.id}>{admin.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
             <div className="flex flex-wrap items-center gap-3">
+              <button 
+                onClick={startEditingProfile}
+                className="px-4 py-2 bg-amber-600/10 text-amber-500 border border-amber-600/30 font-bold rounded-lg hover:bg-amber-600 hover:text-white transition-all flex items-center gap-2 text-sm"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+                Edit Info
+              </button>
               <button 
                 onClick={() => handleInvite(selectedUser)}
                 className="px-4 py-2 bg-blue-600/10 text-blue-500 border border-blue-600/30 font-bold rounded-lg hover:bg-blue-600 hover:text-white transition-all flex items-center gap-2 text-sm"
@@ -638,19 +967,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onImpersonate, currentU
                 </svg>
                 View
               </button>
-              <button 
-                onClick={() => handleToggleAdmin(selectedUserId, selectedUser.role)}
-                className={`px-4 py-2 border font-bold rounded-lg transition-all flex items-center gap-2 text-sm ${
-                  selectedUser.role === 'admin' 
-                  ? 'bg-purple-900/20 text-purple-400 border-purple-900/30 hover:bg-purple-600 hover:text-white' 
-                  : 'bg-indigo-900/20 text-indigo-400 border-indigo-900/30 hover:bg-indigo-600 hover:text-white'
-                }`}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                </svg>
-                {selectedUser.role === 'admin' ? 'Remove Admin' : 'Make Admin'}
-              </button>
+              {selectedUser.role === 'admin' && (
+                <button 
+                  onClick={() => handleToggleAdmin(selectedUserId, selectedUser.role)}
+                  className="px-4 py-2 border font-bold rounded-lg transition-all flex items-center gap-2 text-sm bg-purple-900/20 text-purple-400 border-purple-900/30 hover:bg-purple-600 hover:text-white"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                  </svg>
+                  Remove Admin
+                </button>
+              )}
               <button 
                 onClick={() => handleArchiveUser(selectedUserId, selectedUser.status)}
                 className="px-4 py-2 bg-gray-800 text-gray-400 border border-gray-700 font-bold rounded-lg hover:bg-gray-700 hover:text-white transition-all flex items-center gap-2 text-sm"

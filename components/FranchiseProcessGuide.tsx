@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { STEPS } from '../constants';
-import type { ProcessStep, Task, CustomTask } from '../types';
+import type { ProcessStep, Task, CustomTask, User } from '../types';
 import FDDGuide from './FDDGuide';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 
 interface FranchiseProcessGuideProps {
   userId: string;
+  userProfile?: User | null;
   completedSteps: Set<number>;
   onStepComplete: (stepId: number) => void;
   completedTasks: Set<string>;
@@ -87,7 +88,7 @@ const StepDetail: React.FC<{
   );
 };
 
-const FranchiseProcessGuide: React.FC<FranchiseProcessGuideProps> = ({ userId, completedSteps, onStepComplete, completedTasks, onTaskToggle, onCustomTaskToggle }) => {
+const FranchiseProcessGuide: React.FC<FranchiseProcessGuideProps> = ({ userId, userProfile, completedSteps, onStepComplete, completedTasks, onTaskToggle, onCustomTaskToggle }) => {
   const [activeStepId, setActiveStepId] = useState(1);
   const [userCustomTasks, setUserCustomTasks] = useState<CustomTask[]>([]);
   const activeStep = STEPS.find(s => s.id === activeStepId) || STEPS[0];
@@ -131,6 +132,54 @@ const FranchiseProcessGuide: React.FC<FranchiseProcessGuideProps> = ({ userId, c
     <div className="flex flex-col lg:flex-row gap-8 lg:gap-12 items-start">
       {/* LEFT SIDEBAR: Steps */}
       <nav className="w-full lg:w-1/4 sticky top-24">
+        {userProfile && (
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-6 shadow-md transition-all">
+            <p className="text-[10px] uppercase font-black text-amber-500 tracking-widest mb-3">FRANCHISEE PROFILE</p>
+            <div className="flex items-center space-x-3 mb-4">
+              <div className="w-10 h-10 bg-amber-600 rounded-full flex items-center justify-center font-bold text-white text-lg">
+                {userProfile?.name?.charAt(0) || 'U'}
+              </div>
+              <div className="min-w-0">
+                <h4 className="text-white font-bold text-sm truncate">{userProfile?.name}</h4>
+                <p className="text-gray-500 text-xs truncate">{userProfile?.email}</p>
+              </div>
+            </div>
+            <div className="space-y-2 text-xs border-t border-gray-800/80 pt-3">
+              {userProfile?.phone ? (
+                <div className="flex items-center gap-2 text-gray-400">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-amber-500/80 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.94.725l.548 2.2a1 1 0 01-.321.988l-1.305.98a10.582 10.582 0 004.872 4.872l.98-1.305a1 1 0 01.988-.321l2.2.548a1 1 0 01.725.94V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                  </svg>
+                  <span>{userProfile.phone}</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-gray-500 italic">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.94.725l.548 2.2a1 1 0 01-.321.988l-1.305.98a10.582 10.582 0 004.872 4.872l.98-1.305a1 1 0 01.988-.321l2.2.548a1 1 0 01.725.94V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                  </svg>
+                  <span>No phone added</span>
+                </div>
+              )}
+              {userProfile?.location ? (
+                <div className="flex items-center gap-2 text-gray-400">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-amber-500/80 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  <span className="truncate">{userProfile.location}</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-gray-500 italic">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  <span>No location added</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
         <h3 className="text-sm font-black text-gray-500 uppercase tracking-widest mb-4 px-4">Onboarding Roadmap</h3>
         <ol className="space-y-2">
           {STEPS.map((step, index) => {
